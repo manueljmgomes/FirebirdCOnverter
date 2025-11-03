@@ -20,16 +20,16 @@ jobs:
                   dotnet-version: "8.0.x"
 
             - name: Restore dependencies
-              run: dotnet restore
+              run: dotnet restore FirebirdConverter.sln
 
             - name: Build Debug
-              run: dotnet build --configuration Debug --no-restore
+              run: dotnet build FirebirdConverter.sln --configuration Debug --no-restore
 
             - name: Build Release
-              run: dotnet build --configuration Release --no-restore
+              run: dotnet build FirebirdConverter.sln --configuration Release --no-restore
 
             - name: Run Tests
-              run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+              run: dotnet test FirebirdConverter.sln --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
 
             - name: Publish Test Results
               uses: dorny/test-reporter@v1
