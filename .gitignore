@@ -8,6 +8,10 @@
 *.userosscache
 *.sln.docstates
 
+# Test files
+test-*.vrddl
+*.backup
+
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
