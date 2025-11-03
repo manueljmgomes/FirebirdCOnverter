@@ -1,0 +1,36 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      
+    - name: Build Debug
+      run: dotnet build --configuration Debug --no-restore
+      
+    - name: Build Release
+      run: dotnet build --configuration Release --no-restore
+      
+    - name: Display build info
+      run: |
+        Write-Host "✅ Build concluído com sucesso!"
+        Write-Host "📦 Debug: bin/Debug/net8.0/"
+        Write-Host "📦 Release: bin/Release/net8.0/"
+      shell: pwsh
