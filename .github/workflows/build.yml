@@ -28,9 +28,21 @@ jobs:
             - name: Build Release
               run: dotnet build --configuration Release --no-restore
 
+            - name: Run Tests
+              run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+
+            - name: Publish Test Results
+              uses: dorny/test-reporter@v1
+              if: always()
+              with:
+                  name: Test Results
+                  path: "**/test-results.trx"
+                  reporter: dotnet-trx
+
             - name: Display build info
               run: |
                   Write-Host "✅ Build concluído com sucesso!"
+                  Write-Host "✅ Testes executados!"
                   Write-Host "📦 Debug: bin/Debug/net8.0/"
                   Write-Host "📦 Release: bin/Release/net8.0/"
               shell: pwsh

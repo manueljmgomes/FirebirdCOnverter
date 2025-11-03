@@ -13,24 +13,18 @@ public class VrddlReaderTests
         // Arrange
         var vrddlContent = @"<?xml version=""1.0"" encoding=""iso-8859-1""?>
 <VRDDL maxversion=""3"">
-  <version id=""1"" descr=""Create table"" usr_created=""admin"" dt_created=""2025/01/15"" usr_changed="""" dt_changed="""">
-    <sql><![CDATA[
+  <version id=""1"" descr=""Create table"" usr_created=""admin"" dt_created=""2025/01/15"" usr_changed="""" dt_changed=""""><![CDATA[
 CREATE TABLE CUSTOMERS (
   ID INT PRIMARY KEY,
   NAME VARCHAR(100)
 );
-    ]]></sql>
-  </version>
-  <version id=""2"" descr=""Add column"" usr_created=""admin"" dt_created=""2025/01/16"" usr_changed="""" dt_changed="""">
-    <sql><![CDATA[
+    ]]></version>
+  <version id=""2"" descr=""Add column"" usr_created=""admin"" dt_created=""2025/01/16"" usr_changed="""" dt_changed=""""><![CDATA[
 ALTER TABLE CUSTOMERS ADD EMAIL VARCHAR(100);
-    ]]></sql>
-  </version>
-  <version id=""3"" descr=""Insert data"" usr_created=""admin"" dt_created=""2025/01/17"" usr_changed="""" dt_changed="""">
-    <sql><![CDATA[
+    ]]></version>
+  <version id=""3"" descr=""Insert data"" usr_created=""admin"" dt_created=""2025/01/17"" usr_changed="""" dt_changed=""""><![CDATA[
 INSERT INTO CUSTOMERS (ID, NAME, EMAIL) VALUES (1, 'John Doe', 'john@example.com');
-    ]]></sql>
-  </version>
+    ]]></version>
 </VRDDL>";
         File.WriteAllText(TestVrddlPath, vrddlContent);
         var reader = new VrddlReader();
@@ -71,15 +65,9 @@ INSERT INTO CUSTOMERS (ID, NAME, EMAIL) VALUES (1, 'John Doe', 'john@example.com
         // Arrange
         var vrddlContent = @"<?xml version=""1.0"" encoding=""iso-8859-1""?>
 <VRDDL maxversion=""5"">
-  <version id=""1"" descr=""Test 1"" usr_created=""admin"" dt_created=""2025/01/15"" usr_changed="""" dt_changed="""">
-    <sql><![CDATA[CREATE TABLE TEST1 (ID INT);]]></sql>
-  </version>
-  <version id=""2"" descr=""Test 2"" usr_created=""admin"" dt_created=""2025/01/16"" usr_changed="""" dt_changed="""">
-    <sql><![CDATA[CREATE TABLE TEST2 (ID INT);]]></sql>
-  </version>
-  <version id=""3"" descr=""Test 3"" usr_created=""admin"" dt_created=""2025/01/17"" usr_changed="""" dt_changed="""">
-    <sql><![CDATA[CREATE TABLE TEST3 (ID INT);]]></sql>
-  </version>
+  <version id=""1"" descr=""Test 1"" usr_created=""admin"" dt_created=""2025/01/15"" usr_changed="""" dt_changed=""""><![CDATA[CREATE TABLE TEST1 (ID INT);]]></version>
+  <version id=""2"" descr=""Test 2"" usr_created=""admin"" dt_created=""2025/01/16"" usr_changed="""" dt_changed=""""><![CDATA[CREATE TABLE TEST2 (ID INT);]]></version>
+  <version id=""3"" descr=""Test 3"" usr_created=""admin"" dt_created=""2025/01/17"" usr_changed="""" dt_changed=""""><![CDATA[CREATE TABLE TEST3 (ID INT);]]></version>
 </VRDDL>";
         File.WriteAllText(TestVrddlPath, vrddlContent);
         var reader = new VrddlReader();
@@ -107,9 +95,7 @@ INSERT INTO CUSTOMERS (ID, NAME, EMAIL) VALUES (1, 'John Doe', 'john@example.com
         // Arrange - Testing SQL without CDATA
         var vrddlContent = @"<?xml version=""1.0"" encoding=""iso-8859-1""?>
 <VRDDL maxversion=""1"">
-  <version id=""1"" descr=""Simple SQL"" usr_created=""admin"" dt_created=""2025/01/15"" usr_changed="""" dt_changed="""">
-    <sql>SELECT * FROM TEST_TABLE;</sql>
-  </version>
+  <version id=""1"" descr=""Simple SQL"" usr_created=""admin"" dt_created=""2025/01/15"" usr_changed="""" dt_changed="""">SELECT * FROM TEST_TABLE;</version>
 </VRDDL>";
         File.WriteAllText(TestVrddlPath, vrddlContent);
         var reader = new VrddlReader();
@@ -163,9 +149,7 @@ INSERT INTO CUSTOMERS (ID, NAME, EMAIL) VALUES (1, 'John Doe', 'john@example.com
         // Arrange
         var vrddlContent = @"<?xml version=""1.0"" encoding=""iso-8859-1""?>
 <VRDDL>
-  <version id=""1"" descr=""Test"" usr_created=""admin"" dt_created=""2025/01/15"" usr_changed="""" dt_changed="""">
-    <sql><![CDATA[CREATE TABLE TEST (ID INT);]]></sql>
-  </version>
+  <version id=""1"" descr=""Test"" usr_created=""admin"" dt_created=""2025/01/15"" usr_changed="""" dt_changed=""""><![CDATA[CREATE TABLE TEST (ID INT);]]></version>
 </VRDDL>";
         File.WriteAllText(TestVrddlPath, vrddlContent);
         var reader = new VrddlReader();

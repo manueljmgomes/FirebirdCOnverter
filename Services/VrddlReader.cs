@@ -47,21 +47,21 @@ public class VrddlReader
             xmlDoc = System.Xml.Linq.XDocument.Load(xmlReader);
         }
 
-        // Procurar por <sql> dentro de <version>
-        var sqlElement = xmlDoc.Descendants("sql").FirstOrDefault();
+        // O SQL está diretamente dentro da tag <version>
+        var versionElement = xmlDoc.Root;
 
-        if (sqlElement == null)
+        if (versionElement == null)
             return string.Empty;
 
-        // O SQL pode estar em CDATA ou como texto
-        var cdataNode = sqlElement.Nodes().OfType<System.Xml.Linq.XCData>().FirstOrDefault();
+        // O SQL pode estar em CDATA ou como texto direto
+        var cdataNode = versionElement.Nodes().OfType<System.Xml.Linq.XCData>().FirstOrDefault();
 
         if (cdataNode != null)
         {
             return cdataNode.Value.Trim();
         }
 
-        return sqlElement.Value.Trim();
+        return versionElement.Value.Trim();
     }
 
     /// <summary>
