@@ -20,13 +20,15 @@ public class VrddlGenerator
 
         writer.WriteStartDocument();
 
-        // Root element
-        writer.WriteStartElement("VRDDL");
-        writer.WriteAttributeString("maxversion", "14");
-        writer.WriteAttributeString("requires", "FP");
-
         // Group DDL statements by type for better organization
         var groupedStatements = GroupStatementsByType(ddlStatements);
+
+        // Calculate max version (total number of groups)
+        var maxVersion = groupedStatements.Count;
+
+        // Root element
+        writer.WriteStartElement("VRDDL");
+        writer.WriteAttributeString("maxversion", maxVersion.ToString());
 
         int versionId = 1;
         foreach (var group in groupedStatements)
