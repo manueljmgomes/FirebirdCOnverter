@@ -13,23 +13,24 @@ class Program
 
         var dbnameOption = new Option<string>(
             name: "--dbname",
-            description: "Nome ou caminho do arquivo da base de dados Firebird")
-        { IsRequired = true };
+            description: "Nome ou caminho do arquivo da base de dados Firebird");
 
         var usernameOption = new Option<string>(
             name: "--username",
-            description: "Nome de utilizador para conexão")
-        { IsRequired = true };
+            description: "Nome de utilizador para conexão");
 
         var passwordOption = new Option<string>(
             name: "--password",
-            description: "Password para conexão")
-        { IsRequired = true };
+            description: "Password para conexão");
 
         var serverOption = new Option<string>(
             name: "--server",
             description: "Servidor Firebird (padrão: localhost)",
             getDefaultValue: () => "localhost");
+
+        var inputVrddlOption = new Option<string>(
+            name: "--inputvrddl",
+            description: "Ficheiro VRDDL de entrada com comandos SQL (alternativa ao --dbname)");
 
         var outputOption = new Option<string>(
             name: "--output",
@@ -70,6 +71,7 @@ class Program
         rootCommand.AddOption(usernameOption);
         rootCommand.AddOption(passwordOption);
         rootCommand.AddOption(serverOption);
+        rootCommand.AddOption(inputVrddlOption);
         rootCommand.AddOption(outputOption);
         rootCommand.AddOption(typeMappingOption);
         rootCommand.AddOption(executeOption);
@@ -83,10 +85,11 @@ class Program
         {
             var options = new CommandLineOptions
             {
-                DbName = context.ParseResult.GetValueForOption(dbnameOption)!,
-                Username = context.ParseResult.GetValueForOption(usernameOption)!,
-                Password = context.ParseResult.GetValueForOption(passwordOption)!,
+                DbName = context.ParseResult.GetValueForOption(dbnameOption),
+                Username = context.ParseResult.GetValueForOption(usernameOption),
+                Password = context.ParseResult.GetValueForOption(passwordOption),
                 Server = context.ParseResult.GetValueForOption(serverOption)!,
+                InputVrddlFile = context.ParseResult.GetValueForOption(inputVrddlOption),
                 OutputFile = context.ParseResult.GetValueForOption(outputOption)!,
                 TypeMappingFile = context.ParseResult.GetValueForOption(typeMappingOption),
                 ExecuteOnSqlServer = context.ParseResult.GetValueForOption(executeOption),
@@ -112,91 +115,147 @@ class Program
             Console.WriteLine("╚═══════════════════════════════════════════════════════════════╝");
             Console.WriteLine();
 
-            // 1. Test connection
-            Console.WriteLine($"→ Conectando ao Firebird: {options.Server}");
-            Console.WriteLine($"  Base de dados: {options.DbName}");
-            var extractor = new FirebirdMetadataExtractor(options);
-            await extractor.TestConnectionAsync();
-            Console.WriteLine();
+            // Validate input mode: either Firebird extraction OR VRDDL file reading
+            bool isFirebirdMode = !string.IsNullOrWhiteSpace(options.DbName);
+            bool isVrddlMode = !string.IsNullOrWhiteSpace(options.InputVrddlFile);
 
-            // 2. Extract metadata
-            Console.WriteLine("→ Extraindo metadados das tabelas...");
-            var tables = await extractor.ExtractTablesMetadataAsync();
-            Console.WriteLine($"  ✓ {tables.Count} tabelas encontradas");
-            Console.WriteLine();
-
-            Console.WriteLine("→ Extraindo generators/sequences...");
-            var generators = await extractor.ExtractGeneratorsAsync();
-            Console.WriteLine($"  ✓ {generators.Count} generators encontrados");
-            Console.WriteLine();
-
-            Console.WriteLine("→ Extraindo stored procedures...");
-            var procedures = await extractor.ExtractStoredProceduresAsync();
-            Console.WriteLine($"  ✓ {procedures.Count} stored procedures encontradas");
-            Console.WriteLine();
-
-            Console.WriteLine("→ Extraindo triggers...");
-            var triggers = await extractor.ExtractTriggersAsync();
-            Console.WriteLine($"  ✓ {triggers.Count} triggers encontrados");
-            Console.WriteLine();
-
-            // 3. Load custom type mappings if provided
-            TypeMappingConfig? typeMappingConfig = null;
-            if (!string.IsNullOrWhiteSpace(options.TypeMappingFile))
+            if (isFirebirdMode && isVrddlMode)
             {
-                Console.WriteLine($"→ Carregando mapeamentos customizados: {options.TypeMappingFile}");
-                try
+                throw new ArgumentException("Não é possível usar --dbname e --inputvrddl simultaneamente. Escolha apenas uma opção de entrada.");
+            }
+
+            if (!isFirebirdMode && !isVrddlMode)
+            {
+                throw new ArgumentException("É necessário especificar --dbname (para extração do Firebird) OU --inputvrddl (para leitura de arquivo VRDDL).");
+            }
+
+            List<string> ddlStatements;
+            int tableCount = 0, generatorCount = 0, procedureCount = 0, triggerCount = 0;
+
+            // MODE 1: Read from existing VRDDL file
+            if (isVrddlMode)
+            {
+                Console.WriteLine($"→ Lendo comandos DDL/DML do arquivo VRDDL: {options.InputVrddlFile}");
+
+                if (!File.Exists(options.InputVrddlFile))
                 {
-                    var jsonContent = await File.ReadAllTextAsync(options.TypeMappingFile);
-                    typeMappingConfig = System.Text.Json.JsonSerializer.Deserialize<TypeMappingConfig>(jsonContent);
-                    if (typeMappingConfig?.CustomMappings != null)
+                    throw new FileNotFoundException($"Arquivo VRDDL não encontrado: {options.InputVrddlFile}");
+                }
+
+                var vrddlReader = new VrddlReader();
+                ddlStatements = vrddlReader.ReadVrddlFile(options.InputVrddlFile);
+                var vrddlInfo = vrddlReader.GetVrddlInfo(options.InputVrddlFile);
+
+                Console.WriteLine($"  ✓ {ddlStatements.Count} comandos SQL encontrados");
+                Console.WriteLine($"  ✓ {vrddlInfo.VersionCount} versão(ões) no arquivo (maxversion={vrddlInfo.MaxVersion})");
+                Console.WriteLine();
+
+                // When reading from VRDDL, we don't have detailed counts, so we estimate
+                Console.WriteLine("  ℹ Comandos extraídos de arquivo VRDDL (contagens detalhadas não disponíveis)");
+                Console.WriteLine();
+            }
+            // MODE 2: Extract from Firebird database
+            else
+            {
+                // Validate Firebird parameters
+                if (string.IsNullOrWhiteSpace(options.Username) || string.IsNullOrWhiteSpace(options.Password))
+                {
+                    throw new ArgumentException("--username e --password são obrigatórios quando se usa --dbname");
+                }
+
+                // 1. Test connection
+                Console.WriteLine($"→ Conectando ao Firebird: {options.Server}");
+                Console.WriteLine($"  Base de dados: {options.DbName}");
+                var extractor = new FirebirdMetadataExtractor(options);
+                await extractor.TestConnectionAsync();
+                Console.WriteLine();
+
+                // 2. Extract metadata
+                Console.WriteLine("→ Extraindo metadados das tabelas...");
+                var tables = await extractor.ExtractTablesMetadataAsync();
+                tableCount = tables.Count;
+                Console.WriteLine($"  ✓ {tableCount} tabelas encontradas");
+                Console.WriteLine();
+
+                Console.WriteLine("→ Extraindo generators/sequences...");
+                var generators = await extractor.ExtractGeneratorsAsync();
+                generatorCount = generators.Count;
+                Console.WriteLine($"  ✓ {generatorCount} generators encontrados");
+                Console.WriteLine();
+
+                Console.WriteLine("→ Extraindo stored procedures...");
+                var procedures = await extractor.ExtractStoredProceduresAsync();
+                procedureCount = procedures.Count;
+                Console.WriteLine($"  ✓ {procedureCount} stored procedures encontradas");
+                Console.WriteLine();
+
+                Console.WriteLine("→ Extraindo triggers...");
+                var triggers = await extractor.ExtractTriggersAsync();
+                triggerCount = triggers.Count;
+                Console.WriteLine($"  ✓ {triggerCount} triggers encontrados");
+                Console.WriteLine();
+
+                // 3. Load custom type mappings if provided
+                TypeMappingConfig? typeMappingConfig = null;
+                if (!string.IsNullOrWhiteSpace(options.TypeMappingFile))
+                {
+                    Console.WriteLine($"→ Carregando mapeamentos customizados: {options.TypeMappingFile}");
+                    try
                     {
-                        Console.WriteLine($"  ✓ {typeMappingConfig.CustomMappings.Count} mapeamento(s) customizado(s) carregado(s)");
-                        foreach (var mapping in typeMappingConfig.CustomMappings)
+                        var jsonContent = await File.ReadAllTextAsync(options.TypeMappingFile);
+                        typeMappingConfig = System.Text.Json.JsonSerializer.Deserialize<TypeMappingConfig>(jsonContent);
+                        if (typeMappingConfig?.CustomMappings != null)
                         {
-                            var details = $"{mapping.FirebirdType}";
-                            if (mapping.Precision.HasValue && mapping.Scale.HasValue)
-                                details += $"({mapping.Precision},{mapping.Scale})";
-                            else if (mapping.Length.HasValue)
-                                details += $"({mapping.Length})";
-                            Console.WriteLine($"    • {details} → {mapping.SqlServerType}");
+                            Console.WriteLine($"  ✓ {typeMappingConfig.CustomMappings.Count} mapeamento(s) customizado(s) carregado(s)");
+                            foreach (var mapping in typeMappingConfig.CustomMappings)
+                            {
+                                var details = $"{mapping.FirebirdType}";
+                                if (mapping.Precision.HasValue && mapping.Scale.HasValue)
+                                    details += $"({mapping.Precision},{mapping.Scale})";
+                                else if (mapping.Length.HasValue)
+                                    details += $"({mapping.Length})";
+                                Console.WriteLine($"    • {details} → {mapping.SqlServerType}");
+                            }
                         }
                     }
+                    catch (Exception ex)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"  ⚠ Aviso: Erro ao carregar mapeamentos customizados: {ex.Message}");
+                        Console.WriteLine("  Continuando com mapeamentos padrão...");
+                        Console.ResetColor();
+                    }
+                    Console.WriteLine();
                 }
-                catch (Exception ex)
+
+                // 4. Convert to SQL Server DDL
+                Console.WriteLine("→ Convertendo DDL para SQL Server...");
+                var converter = new SqlServerDdlConverter();
+
+                // Apply custom type mappings if available
+                if (typeMappingConfig?.CustomMappings != null && typeMappingConfig.CustomMappings.Any())
                 {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine($"  ⚠ Aviso: Erro ao carregar mapeamentos customizados: {ex.Message}");
-                    Console.WriteLine("  Continuando com mapeamentos padrão...");
-                    Console.ResetColor();
+                    converter.SetCustomTypeMappings(typeMappingConfig.CustomMappings);
                 }
+
+                ddlStatements = converter.ConvertAllToSqlServer(tables, generators, procedures, triggers);
+                Console.WriteLine($"  ✓ {ddlStatements.Count} comandos DDL gerados");
                 Console.WriteLine();
             }
 
-            // 4. Convert to SQL Server DDL
-            Console.WriteLine("→ Convertendo DDL para SQL Server...");
-            var converter = new SqlServerDdlConverter();
-
-            // Apply custom type mappings if available
-            if (typeMappingConfig?.CustomMappings != null && typeMappingConfig.CustomMappings.Any())
+            // 5. Generate VRDDL file (common for both modes)
+            if (!isVrddlMode) // Only generate new VRDDL if we're not reading from one
             {
-                converter.SetCustomTypeMappings(typeMappingConfig.CustomMappings);
+                Console.WriteLine($"→ Gerando arquivo VRDDL: {options.OutputFile}");
+                var vrddlGenerator = new VrddlGenerator();
+                vrddlGenerator.GenerateVrddlFile(ddlStatements, options.OutputFile);
+                Console.WriteLine();
             }
 
-            var ddlStatements = converter.ConvertAllToSqlServer(tables, generators, procedures, triggers);
-            Console.WriteLine($"  ✓ {ddlStatements.Count} comandos DDL gerados");
-            Console.WriteLine();
-
-            // 5. Generate VRDDL file
-            Console.WriteLine($"→ Gerando arquivo VRDDL: {options.OutputFile}");
-            var vrddlGenerator = new VrddlGenerator();
-            vrddlGenerator.GenerateVrddlFile(ddlStatements, options.OutputFile);
-            Console.WriteLine();
-
-            // 6. Execute on SQL Server if requested
+            // 6. Execute on SQL Server if requested (common for both modes)
             if (options.ExecuteOnSqlServer)
             {
-                Console.WriteLine("→ Executando DDL no SQL Server...");
+                Console.WriteLine("→ Executando DDL/DML no SQL Server...");
 
                 // Validate SQL Server parameters
                 if (string.IsNullOrWhiteSpace(options.SqlServerInstance))
@@ -237,12 +296,20 @@ class Program
             Console.WriteLine("╚═══════════════════════════════════════════════════════════════╝");
             Console.WriteLine();
             Console.WriteLine("Resumo:");
-            Console.WriteLine($"  • Tabelas convertidas: {tables.Count}");
-            Console.WriteLine($"  • Sequences criadas: {generators.Count}");
-            Console.WriteLine($"  • Stored Procedures convertidas: {procedures.Count}");
-            Console.WriteLine($"  • Triggers convertidos: {triggers.Count}");
-            Console.WriteLine($"  • Total de comandos DDL: {ddlStatements.Count}");
-            Console.WriteLine($"  • Arquivo gerado: {Path.GetFullPath(options.OutputFile)}");
+            if (isFirebirdMode)
+            {
+                Console.WriteLine($"  • Tabelas convertidas: {tableCount}");
+                Console.WriteLine($"  • Sequences criadas: {generatorCount}");
+                Console.WriteLine($"  • Stored Procedures convertidas: {procedureCount}");
+                Console.WriteLine($"  • Triggers convertidos: {triggerCount}");
+                Console.WriteLine($"  • Total de comandos DDL: {ddlStatements.Count}");
+                Console.WriteLine($"  • Arquivo gerado: {Path.GetFullPath(options.OutputFile)}");
+            }
+            else
+            {
+                Console.WriteLine($"  • Arquivo de entrada: {Path.GetFullPath(options.InputVrddlFile!)}");
+                Console.WriteLine($"  • Total de comandos SQL processados: {ddlStatements.Count}");
+            }
             if (options.ExecuteOnSqlServer)
             {
                 Console.WriteLine($"  • Executado em: {options.SqlServerInstance}/{options.SqlServerDatabase}");
