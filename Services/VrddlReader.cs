@@ -6,16 +6,16 @@ namespace FirebirdToSqlServerConverter.Services;
 public class VrddlReader
 {
     /// <summary>
-    /// Lê comandos SQL (DDL e DML) de um ficheiro VRDDL
+    /// Lê comandos SQL (DDL e DML) de um ficheiro VRDDL com seus metadados
     /// </summary>
-    public List<string> ReadVrddlFile(string vrddlPath)
+    public List<VrddlVersion> ReadVrddlFileWithMetadata(string vrddlPath)
     {
         if (!File.Exists(vrddlPath))
         {
             throw new FileNotFoundException($"Ficheiro VRDDL não encontrado: {vrddlPath}");
         }
 
-        var sqlStatements = new List<string>();
+        var versions = new List<VrddlVersion>();
 
         using var reader = XmlReader.Create(vrddlPath);
 
@@ -25,18 +25,38 @@ public class VrddlReader
                 (reader.Name.Equals("version", StringComparison.OrdinalIgnoreCase) || 
                  reader.Name.Equals("VERSION", StringComparison.Ordinal)))
             {
+                // Extrair atributos
+                var version = new VrddlVersion
+                {
+                    Id = reader.GetAttribute("id") ?? "",
+                    Description = reader.GetAttribute("descr") ?? "",
+                    UserCreated = reader.GetAttribute("usr_created") ?? "",
+                    DateCreated = reader.GetAttribute("dt_created") ?? "",
+                    UserChanged = reader.GetAttribute("usr_changed") ?? "",
+                    DateChanged = reader.GetAttribute("dt_changed") ?? ""
+                };
+
                 // Ler o elemento <version> ou <VERSION>
                 var versionXml = reader.ReadOuterXml();
-                var sql = ExtractSqlFromVersion(versionXml);
+                version.SqlStatement = ExtractSqlFromVersion(versionXml);
 
-                if (!string.IsNullOrWhiteSpace(sql))
+                if (!string.IsNullOrWhiteSpace(version.SqlStatement))
                 {
-                    sqlStatements.Add(sql);
+                    versions.Add(version);
                 }
             }
         }
 
-        return sqlStatements;
+        return versions;
+    }
+
+    /// <summary>
+    /// Lê comandos SQL (DDL e DML) de um ficheiro VRDDL (sem metadados)
+    /// </summary>
+    public List<string> ReadVrddlFile(string vrddlPath)
+    {
+        var versions = ReadVrddlFileWithMetadata(vrddlPath);
+        return versions.Select(v => v.SqlStatement).ToList();
     }
 
     private string ExtractSqlFromVersion(string versionXml)
@@ -91,6 +111,8 @@ public class VrddlReader
                 {
                     info.MaxVersion = maxVersion;
                 }
+                
+                info.Requires = reader.GetAttribute("requires") ?? "";
             }
             else if (reader.NodeType == XmlNodeType.Element && 
                      (reader.Name.Equals("version", StringComparison.OrdinalIgnoreCase) ||
@@ -104,8 +126,20 @@ public class VrddlReader
     }
 }
 
+public class VrddlVersion
+{
+    public string Id { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string UserCreated { get; set; } = string.Empty;
+    public string DateCreated { get; set; } = string.Empty;
+    public string UserChanged { get; set; } = string.Empty;
+    public string DateChanged { get; set; } = string.Empty;
+    public string SqlStatement { get; set; } = string.Empty;
+}
+
 public class VrddlInfo
 {
     public int MaxVersion { get; set; }
     public int VersionCount { get; set; }
+    public string Requires { get; set; } = string.Empty;
 }

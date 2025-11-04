@@ -79,7 +79,7 @@ dotnet run -- --inputvrddl=<ficheiro.vrddl> [opções...]
 
 | Parâmetro | Obrigatório | Descrição | Valor Padrão |
 |-----------|-------------|-----------|--------------|
-| `--output` | ❌ Não | Nome do arquivo de saída .vrddl (apenas para modo Firebird) | `output.vrddl` |
+| `--output` | ❌ Não | Nome do arquivo de saída .vrddl | `output.vrddl` |
 
 #### Parâmetros de Tipo Mapping (opcional)
 
@@ -115,10 +115,10 @@ dotnet run -- --dbname="/path/to/database.fdb" --username=admin --password=secre
 #### Exemplo 3: Leitura de Ficheiro VRDDL Existente
 
 ```bash
-dotnet run -- --inputvrddl="existing_schema.vrddl"
+dotnet run -- --inputvrddl="existing_schema.vrddl" --output="converted_schema.vrddl"
 ```
 
-**Nota**: Este modo é útil quando já possui um ficheiro VRDDL (possivelmente com DDL e DML) e deseja apenas executá-lo no SQL Server, sem necessidade de acesso à base Firebird original.
+**Nota**: Este modo lê um ficheiro VRDDL existente com comandos SQL Firebird, converte-os para SQL Server, e gera um novo ficheiro VRDDL preservando todos os metadados originais (versões, descrições, utilizadores, datas). Apenas o código SQL é convertido.
 
 #### Exemplo 4: Extração e Execução Automática no SQL Server
 
@@ -206,7 +206,6 @@ O executável estará em: `bin\Release\net8.0\win-x64\publish\`
 
 - Alguns tipos de dados específicos do Firebird podem necessitar de ajustes manuais ou mapeamentos customizados
 - CHECK constraints podem não ser extraídas automaticamente em alguns casos
-- Quando lê de ficheiro VRDDL, não gera novo ficheiro VRDDL (apenas executa se `--execute` estiver ativo)
 
 ## Licença
 

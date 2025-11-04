@@ -131,6 +131,8 @@ class Program
 
             List<string> ddlStatements;
             int tableCount = 0, generatorCount = 0, procedureCount = 0, triggerCount = 0;
+            List<VrddlVersion>? vrddlVersions = null;
+            VrddlInfo? vrddlInfo = null;
 
             // MODE 1: Read from existing VRDDL file
             if (isVrddlMode)
@@ -143,14 +145,14 @@ class Program
                 }
 
                 var vrddlReader = new VrddlReader();
-                var firebirdStatements = vrddlReader.ReadVrddlFile(options.InputVrddlFile);
-                var vrddlInfo = vrddlReader.GetVrddlInfo(options.InputVrddlFile);
+                vrddlVersions = vrddlReader.ReadVrddlFileWithMetadata(options.InputVrddlFile);
+                vrddlInfo = vrddlReader.GetVrddlInfo(options.InputVrddlFile);
 
-                Console.WriteLine($"  ✓ {firebirdStatements.Count} comandos SQL encontrados");
+                Console.WriteLine($"  ✓ {vrddlVersions.Count} comandos SQL encontrados");
                 Console.WriteLine($"  ✓ {vrddlInfo.VersionCount} versão(ões) no arquivo (maxversion={vrddlInfo.MaxVersion})");
                 Console.WriteLine();
 
-                if (firebirdStatements.Count == 0)
+                if (vrddlVersions.Count == 0)
                 {
                     throw new InvalidOperationException("Nenhum comando SQL encontrado no arquivo VRDDL.");
                 }
@@ -158,27 +160,25 @@ class Program
                 // Convert Firebird SQL to SQL Server SQL
                 Console.WriteLine("→ Convertendo comandos Firebird para SQL Server...");
                 var psqlConverter = new PsqlToTsqlConverter();
-                ddlStatements = new List<string>();
-                
-                foreach (var firebirdSql in firebirdStatements)
+        
+                foreach (var version in vrddlVersions)
                 {
                     try
                     {
                         // Apply basic conversions for DDL statements
-                        var sqlServerSql = ConvertFirebirdDdlToSqlServer(firebirdSql, psqlConverter);
-                        ddlStatements.Add(sqlServerSql);
+                        version.SqlStatement = ConvertFirebirdDdlToSqlServer(version.SqlStatement, psqlConverter);
                     }
                     catch (Exception ex)
                     {
                         Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine($"  ⚠ Aviso: Erro ao converter comando: {ex.Message}");
-                        Console.WriteLine($"  SQL original: {firebirdSql.Substring(0, Math.Min(100, firebirdSql.Length))}...");
+                        Console.WriteLine($"  ⚠ Aviso: Erro ao converter comando (version {version.Id}): {ex.Message}");
+                        Console.WriteLine($"  SQL original: {version.SqlStatement.Substring(0, Math.Min(100, version.SqlStatement.Length))}...");
                         Console.ResetColor();
                         // Keep the original statement if conversion fails
-                        ddlStatements.Add(firebirdSql);
                     }
                 }
 
+                ddlStatements = vrddlVersions.Select(v => v.SqlStatement).ToList();
                 Console.WriteLine($"  ✓ {ddlStatements.Count} comandos convertidos para SQL Server");
                 Console.WriteLine();
             }
@@ -272,11 +272,21 @@ class Program
             }
 
             // 5. Generate VRDDL file (common for both modes)
-            // Generate new VRDDL with converted SQL Server statements
-         Console.WriteLine($"→ Gerando arquivo VRDDL: {options.OutputFile}");
-            var vrddlGenerator = new VrddlGenerator();
-  vrddlGenerator.GenerateVrddlFile(ddlStatements, options.OutputFile);
-            Console.WriteLine();
+          // Generate new VRDDL with converted SQL Server statements
+            Console.WriteLine($"→ Gerando arquivo VRDDL: {options.OutputFile}");
+   var vrddlGenerator = new VrddlGenerator();
+          
+            if (isVrddlMode && vrddlVersions != null && vrddlInfo != null)
+        {
+   // Preserve original metadata when converting from VRDDL
+         vrddlGenerator.GenerateVrddlFileWithMetadata(vrddlVersions, options.OutputFile, vrddlInfo);
+            }
+       else
+  {
+        // Generate new VRDDL with new metadata when extracting from Firebird
+       vrddlGenerator.GenerateVrddlFile(ddlStatements, options.OutputFile);
+ }
+          Console.WriteLine();
 
             // 6. Execute on SQL Server if requested (common for both modes)
             if (options.ExecuteOnSqlServer)

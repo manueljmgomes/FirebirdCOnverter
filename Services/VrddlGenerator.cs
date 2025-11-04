@@ -42,6 +42,55 @@ public class VrddlGenerator
         Console.WriteLine($"✓ Arquivo VRDDL gerado: {outputPath}");
     }
 
+    /// <summary>
+    /// Gera ficheiro VRDDL preservando os metadados originais das versões
+    /// </summary>
+    public void GenerateVrddlFileWithMetadata(List<VrddlVersion> versions, string outputPath, VrddlInfo vrddlInfo)
+    {
+        var settings = new XmlWriterSettings
+        {
+            Encoding = Encoding.GetEncoding("iso-8859-1"), // Use same encoding as original
+            Indent = true,
+            IndentChars = "  ",
+            NewLineChars = "\n",
+            NewLineHandling = NewLineHandling.Replace
+        };
+
+        using var writer = XmlWriter.Create(outputPath, settings);
+
+        writer.WriteStartDocument();
+
+        // Root element with original attributes
+        writer.WriteStartElement("VRDDL");
+        writer.WriteAttributeString("maxversion", vrddlInfo.MaxVersion.ToString());
+        writer.WriteAttributeString("requires", vrddlInfo.Requires);
+
+        foreach (var version in versions)
+        {
+            WriteVersionWithMetadata(writer, version);
+        }
+
+        writer.WriteEndElement(); // VRDDL
+        writer.WriteEndDocument();
+
+        Console.WriteLine($"✓ Arquivo VRDDL gerado: {outputPath}");
+    }
+
+    private void WriteVersionWithMetadata(XmlWriter writer, VrddlVersion version)
+    {
+        writer.WriteStartElement("VERSION");
+        writer.WriteAttributeString("id", version.Id);
+        writer.WriteAttributeString("descr", version.Description);
+        writer.WriteAttributeString("usr_created", version.UserCreated);
+        writer.WriteAttributeString("dt_created", version.DateCreated);
+        writer.WriteAttributeString("usr_changed", version.UserChanged);
+        writer.WriteAttributeString("dt_changed", version.DateChanged);
+
+        writer.WriteCData(version.SqlStatement);
+
+        writer.WriteEndElement(); // VERSION
+    }
+
     private Dictionary<string, List<string>> GroupStatementsByType(List<string> ddlStatements)
     {
         var groups = new Dictionary<string, List<string>>();
