@@ -143,15 +143,43 @@ class Program
                 }
 
                 var vrddlReader = new VrddlReader();
-                ddlStatements = vrddlReader.ReadVrddlFile(options.InputVrddlFile);
+                var firebirdStatements = vrddlReader.ReadVrddlFile(options.InputVrddlFile);
                 var vrddlInfo = vrddlReader.GetVrddlInfo(options.InputVrddlFile);
 
-                Console.WriteLine($"  ✓ {ddlStatements.Count} comandos SQL encontrados");
+                Console.WriteLine($"  ✓ {firebirdStatements.Count} comandos SQL encontrados");
                 Console.WriteLine($"  ✓ {vrddlInfo.VersionCount} versão(ões) no arquivo (maxversion={vrddlInfo.MaxVersion})");
                 Console.WriteLine();
 
-                // When reading from VRDDL, we don't have detailed counts, so we estimate
-                Console.WriteLine("  ℹ Comandos extraídos de arquivo VRDDL (contagens detalhadas não disponíveis)");
+                if (firebirdStatements.Count == 0)
+                {
+                    throw new InvalidOperationException("Nenhum comando SQL encontrado no arquivo VRDDL.");
+                }
+
+                // Convert Firebird SQL to SQL Server SQL
+                Console.WriteLine("→ Convertendo comandos Firebird para SQL Server...");
+                var psqlConverter = new PsqlToTsqlConverter();
+                ddlStatements = new List<string>();
+                
+                foreach (var firebirdSql in firebirdStatements)
+                {
+                    try
+                    {
+                        // Apply basic conversions for DDL statements
+                        var sqlServerSql = ConvertFirebirdDdlToSqlServer(firebirdSql, psqlConverter);
+                        ddlStatements.Add(sqlServerSql);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"  ⚠ Aviso: Erro ao converter comando: {ex.Message}");
+                        Console.WriteLine($"  SQL original: {firebirdSql.Substring(0, Math.Min(100, firebirdSql.Length))}...");
+                        Console.ResetColor();
+                        // Keep the original statement if conversion fails
+                        ddlStatements.Add(firebirdSql);
+                    }
+                }
+
+                Console.WriteLine($"  ✓ {ddlStatements.Count} comandos convertidos para SQL Server");
                 Console.WriteLine();
             }
             // MODE 2: Extract from Firebird database
@@ -244,13 +272,11 @@ class Program
             }
 
             // 5. Generate VRDDL file (common for both modes)
-            if (!isVrddlMode) // Only generate new VRDDL if we're not reading from one
-            {
-                Console.WriteLine($"→ Gerando arquivo VRDDL: {options.OutputFile}");
-                var vrddlGenerator = new VrddlGenerator();
-                vrddlGenerator.GenerateVrddlFile(ddlStatements, options.OutputFile);
-                Console.WriteLine();
-            }
+            // Generate new VRDDL with converted SQL Server statements
+         Console.WriteLine($"→ Gerando arquivo VRDDL: {options.OutputFile}");
+            var vrddlGenerator = new VrddlGenerator();
+  vrddlGenerator.GenerateVrddlFile(ddlStatements, options.OutputFile);
+            Console.WriteLine();
 
             // 6. Execute on SQL Server if requested (common for both modes)
             if (options.ExecuteOnSqlServer)
@@ -305,15 +331,13 @@ class Program
                 Console.WriteLine($"  • Total de comandos DDL: {ddlStatements.Count}");
                 Console.WriteLine($"  • Arquivo gerado: {Path.GetFullPath(options.OutputFile)}");
             }
-            else
+ else // isVrddlMode
             {
                 Console.WriteLine($"  • Arquivo de entrada: {Path.GetFullPath(options.InputVrddlFile!)}");
-                Console.WriteLine($"  • Total de comandos SQL processados: {ddlStatements.Count}");
-            }
-            if (options.ExecuteOnSqlServer)
-            {
-                Console.WriteLine($"  • Executado em: {options.SqlServerInstance}/{options.SqlServerDatabase}");
-            }
+            Console.WriteLine($"  • Total de comandos SQL processados: {ddlStatements.Count}");
+            Console.WriteLine($"  • Arquivo gerado: {Path.GetFullPath(options.OutputFile)}");
+      }
+
             Console.WriteLine();
         }
         catch (Exception ex)
@@ -331,4 +355,74 @@ class Program
             Environment.Exit(1);
         }
     }
+
+    /// <summary>
+    /// Converts a single Firebird DDL statement to SQL Server format
+    /// </summary>
+    static string ConvertFirebirdDdlToSqlServer(string firebirdSql, PsqlToTsqlConverter psqlConverter)
+    {
+        var sql = firebirdSql.Trim();
+        
+        // For procedures and triggers, use the specialized converter
+    if (sql.StartsWith("CREATE PROCEDURE", StringComparison.OrdinalIgnoreCase) ||
+         sql.StartsWith("ALTER PROCEDURE", StringComparison.OrdinalIgnoreCase))
+    {
+            // Extract the procedure body and convert it
+     var match = System.Text.RegularExpressions.Regex.Match(sql, 
+            @"(CREATE|ALTER)\s+PROCEDURE\s+(\w+)(.*?)AS\s+(.*)", 
+     System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+            
+            if (match.Success)
+            {
+  var command = match.Groups[1].Value;
+         var procName = match.Groups[2].Value;
+       var parameters = match.Groups[3].Value;
+     var body = match.Groups[4].Value;
+         
+ var convertedBody = psqlConverter.ConvertProcedureBody(body);
+       return $"{command} PROCEDURE {procName}{parameters}\nAS\nBEGIN\n{convertedBody}\nEND";
+          }
+        }
+  
+        if (sql.StartsWith("CREATE TRIGGER", StringComparison.OrdinalIgnoreCase) ||
+     sql.StartsWith("ALTER TRIGGER", StringComparison.OrdinalIgnoreCase))
+        {
+ // Extract the trigger body and convert it
+     var match = System.Text.RegularExpressions.Regex.Match(sql,
+     @"(CREATE|ALTER)\s+TRIGGER\s+(.*?)AS\s+(.*)",
+System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+            
+   if (match.Success)
+      {
+         var command = match.Groups[1].Value;
+    var triggerDef = match.Groups[2].Value;
+   var body = match.Groups[3].Value;
+    
+         var convertedBody = psqlConverter.ConvertTriggerBody(body);
+   return $"{command} TRIGGER {triggerDef}\nAS\nBEGIN\n{convertedBody}\nEND";
+        }
+    }
+        
+        // For other DDL statements, apply basic conversions
+        // Replace Firebird data types with SQL Server equivalents
+        sql = System.Text.RegularExpressions.Regex.Replace(sql, @"\bBLOB\s+SUB_TYPE\s+TEXT\b", "VARCHAR(MAX)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        sql = System.Text.RegularExpressions.Regex.Replace(sql, @"\bBLOB\b", "VARBINARY(MAX)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+  sql = System.Text.RegularExpressions.Regex.Replace(sql, @"\bDOUBLE PRECISION\b", "FLOAT", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+      sql = System.Text.RegularExpressions.Regex.Replace(sql, @"\bINTEGER\b", "INT", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Replace Firebird functions with SQL Server equivalents
+sql = System.Text.RegularExpressions.Regex.Replace(sql, @"\bCURRENT_TIMESTAMP\b", "GETDATE()", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        sql = System.Text.RegularExpressions.Regex.Replace(sql, @"\bCURRENT_DATE\b", "CAST(GETDATE() AS DATE)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Replace string concatenation
+     sql = sql.Replace("||", "+");
+        
+ // DATEADD function: Firebird uses DATEADD(amount UNIT TO date), SQL Server uses DATEADD(unit, amount, date)
+        sql = System.Text.RegularExpressions.Regex.Replace(sql, 
+    @"DATEADD\s*\(\s*(-?\d+)\s+(YEAR|MONTH|DAY|HOUR|MINUTE|SECOND)\s+TO\s+([^)]+)\)",
+            match => $"DATEADD({match.Groups[2].Value}, {match.Groups[1].Value}, {match.Groups[3].Value})",
+       System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+     return sql;
+  }
 }

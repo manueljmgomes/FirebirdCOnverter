@@ -21,9 +21,11 @@ public class VrddlReader
 
         while (reader.Read())
         {
-            if (reader.NodeType == XmlNodeType.Element && reader.Name == "version")
+            if (reader.NodeType == XmlNodeType.Element && 
+                (reader.Name.Equals("version", StringComparison.OrdinalIgnoreCase) || 
+                 reader.Name.Equals("VERSION", StringComparison.Ordinal)))
             {
-                // Ler o elemento <version>
+                // Ler o elemento <version> ou <VERSION>
                 var versionXml = reader.ReadOuterXml();
                 var sql = ExtractSqlFromVersion(versionXml);
 
@@ -47,7 +49,7 @@ public class VrddlReader
             xmlDoc = System.Xml.Linq.XDocument.Load(xmlReader);
         }
 
-        // O SQL está diretamente dentro da tag <version>
+        // O SQL está diretamente dentro da tag <version> ou <VERSION>
         var versionElement = xmlDoc.Root;
 
         if (versionElement == null)
@@ -80,7 +82,9 @@ public class VrddlReader
 
         while (reader.Read())
         {
-            if (reader.NodeType == XmlNodeType.Element && reader.Name == "VRDDL")
+            if (reader.NodeType == XmlNodeType.Element && 
+                (reader.Name.Equals("VRDDL", StringComparison.OrdinalIgnoreCase) ||
+                 reader.Name.Equals("vrddl", StringComparison.Ordinal)))
             {
                 var maxVersionAttr = reader.GetAttribute("maxversion");
                 if (int.TryParse(maxVersionAttr, out int maxVersion))
@@ -88,7 +92,9 @@ public class VrddlReader
                     info.MaxVersion = maxVersion;
                 }
             }
-            else if (reader.NodeType == XmlNodeType.Element && reader.Name == "version")
+            else if (reader.NodeType == XmlNodeType.Element && 
+                     (reader.Name.Equals("version", StringComparison.OrdinalIgnoreCase) ||
+                      reader.Name.Equals("VERSION", StringComparison.Ordinal)))
             {
                 info.VersionCount++;
             }

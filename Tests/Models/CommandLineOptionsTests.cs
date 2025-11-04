@@ -1,5 +1,5 @@
 using FirebirdToSqlServerConverter.Models;
-using Xunit;
+using Xunit; // Ensure this using directive is present for [Fact] and FactAttribute
 
 namespace FirebirdToSqlServerConverter.Tests.Models;
 
